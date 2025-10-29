@@ -8,10 +8,11 @@ import { Thermometer, Droplets, Ruler, Lightbulb, TrendingUp, TrendingDown, Minu
 
 interface SensorReading {
   device_id: string
-  temperatura: number
-  humedad: number
-  distancia_cm: number
-  luz_porcentaje: number
+  // Los tipos de la base de datos (numeric) llegan como string
+  temperatura: string
+  humedad: string
+  distancia_cm: string
+  luz_porcentaje: string
   estado_luz: string
   timestamp_lectura: string
 }
@@ -70,6 +71,10 @@ export function DeviceDashboard({ deviceId }: DeviceDashboardProps) {
   }
 
   const getTrend = (current: number, avg: number) => {
+    // Asegurarse de que avg no sea cero para evitar división por cero
+    if (avg === 0) {
+      return { icon: Minus, color: "text-muted-foreground", text: "Estable" }
+    }
     const diff = ((current - avg) / avg) * 100
     if (Math.abs(diff) < 2) return { icon: Minus, color: "text-muted-foreground", text: "Estable" }
     if (diff > 0) return { icon: TrendingUp, color: "text-green-600", text: `+${diff.toFixed(1)}%` }
@@ -95,9 +100,16 @@ export function DeviceDashboard({ deviceId }: DeviceDashboardProps) {
     )
   }
 
-  const tempTrend = getTrend(latestReading.temperatura, stats.avg_temp)
-  const humidityTrend = getTrend(latestReading.humedad, stats.avg_humidity)
-  const distanceTrend = getTrend(latestReading.distancia_cm, stats.avg_distance)
+  // --- CORRECCIONES AQUÍ ---
+  // Convertir los strings de latestReading a números antes de usarlos
+  const tempActual = parseFloat(latestReading.temperatura)
+  const humedadActual = parseFloat(latestReading.humedad)
+  const distanciaActual = parseFloat(latestReading.distancia_cm)
+
+  const tempTrend = getTrend(tempActual, stats.avg_temp)
+  const humidityTrend = getTrend(humedadActual, stats.avg_humidity)
+  const distanceTrend = getTrend(distanciaActual, stats.avg_distance)
+  // --- FIN DE CORRECCIONES ---
 
   return (
     <div className="space-y-6">
@@ -105,7 +117,8 @@ export function DeviceDashboard({ deviceId }: DeviceDashboardProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title="Temperatura"
-          value={`${latestReading.temperatura.toFixed(1)}°C`}
+          // --- CORRECCIÓN AQUÍ ---
+          value={!isNaN(tempActual) ? `${tempActual.toFixed(1)}°C` : "--"}
           icon={Thermometer}
           trend={tempTrend}
           subtitle={`Promedio: ${stats.avg_temp.toFixed(1)}°C`}
@@ -113,7 +126,8 @@ export function DeviceDashboard({ deviceId }: DeviceDashboardProps) {
         />
         <MetricCard
           title="Humedad"
-          value={`${latestReading.humedad.toFixed(1)}%`}
+          // --- CORRECCIÓN AQUÍ ---
+          value={!isNaN(humedadActual) ? `${humedadActual.toFixed(1)}%` : "--"}
           icon={Droplets}
           trend={humidityTrend}
           subtitle={`Promedio: ${stats.avg_humidity.toFixed(1)}%`}
@@ -121,7 +135,8 @@ export function DeviceDashboard({ deviceId }: DeviceDashboardProps) {
         />
         <MetricCard
           title="Distancia"
-          value={`${latestReading.distancia_cm.toFixed(1)} cm`}
+          // --- CORRECCIÓN AQUÍ ---
+          value={!isNaN(distanciaActual) ? `${distanciaActual.toFixed(1)} cm` : "--"}
           icon={Ruler}
           trend={distanceTrend}
           subtitle={`Promedio: ${stats.avg_distance.toFixed(1)} cm`}
@@ -186,6 +201,7 @@ export function DeviceDashboard({ deviceId }: DeviceDashboardProps) {
               <div>
                 <p className="text-sm font-medium mb-2">Rango de Temperatura</p>
                 <div className="flex justify-between text-sm">
+                  {/* Estos .toFixed() están correctos porque la API /api/stats ya devuelve números */}
                   <span className="text-muted-foreground">Mín: {stats.min_temp.toFixed(1)}°C</span>
                   <span className="text-muted-foreground">Máx: {stats.max_temp.toFixed(1)}°C</span>
                 </div>
