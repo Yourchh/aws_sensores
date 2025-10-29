@@ -1,103 +1,118 @@
-import Image from "next/image";
+"use client"
 
-export default function Home() {
+import { useEffect, useState } from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { DeviceDashboard } from "@/components/device-dashboard"
+import { Thermometer, Droplets, Ruler, Lightbulb } from "lucide-react"
+
+export default function Page() {
+  const [devices, setDevices] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchDevices()
+  }, [])
+
+  const fetchDevices = async () => {
+    try {
+      const response = await fetch("/api/devices")
+      const data = await response.json()
+      console.log("[v0] Devices fetched:", data)
+      setDevices(data.devices || [])
+    } catch (error) {
+      console.error("[v0] Error fetching devices:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="min-h-screen bg-background">
+      <header className="border-b border-border bg-card">
+        <div className="container mx-auto px-4 py-6">
+          <h1 className="text-3xl font-bold text-foreground">Dashboard ESP32 Sensores</h1>
+          <p className="text-muted-foreground mt-1">Monitoreo en tiempo real de sensores IoT</p>
+        </div>
+      </header>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      <main className="container mx-auto px-4 py-8">
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-muted-foreground">Cargando dispositivos...</div>
+          </div>
+        ) : devices.length === 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>No hay dispositivos disponibles</CardTitle>
+              <CardDescription>
+                Verifica que el servidor Flask esté ejecutándose y la base de datos tenga datos.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        ) : (
+          <Tabs defaultValue={devices[0]} className="w-full">
+            <TabsList
+              className="grid w-full max-w-md mx-auto mb-8"
+              style={{ gridTemplateColumns: `repeat(${devices.length}, 1fr)` }}
+            >
+              {devices.map((device) => (
+                <TabsTrigger key={device} value={device} className="text-sm">
+                  {device}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+
+            {devices.map((device) => (
+              <TabsContent key={device} value={device}>
+                <DeviceDashboard deviceId={device} />
+              </TabsContent>
+            ))}
+          </Tabs>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-8">
+          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900 border-orange-200 dark:border-orange-800">
+            <CardContent className="flex items-center gap-3 p-6">
+              <Thermometer className="h-8 w-8 text-orange-600 dark:text-orange-400" />
+              <div>
+                <p className="text-sm font-medium text-orange-900 dark:text-orange-100">Temperatura</p>
+                <p className="text-xs text-orange-700 dark:text-orange-300">Sensor térmico</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
+            <CardContent className="flex items-center gap-3 p-6">
+              <Droplets className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">Humedad</p>
+                <p className="text-xs text-blue-700 dark:text-blue-300">Sensor de humedad</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 border-green-200 dark:border-green-800">
+            <CardContent className="flex items-center gap-3 p-6">
+              <Ruler className="h-8 w-8 text-green-600 dark:text-green-400" />
+              <div>
+                <p className="text-sm font-medium text-green-900 dark:text-green-100">Distancia</p>
+                <p className="text-xs text-green-700 dark:text-green-300">Sensor ultrasónico</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-950 dark:to-yellow-900 border-yellow-200 dark:border-yellow-800">
+            <CardContent className="flex items-center gap-3 p-6">
+              <Lightbulb className="h-8 w-8 text-yellow-600 dark:text-yellow-400" />
+              <div>
+                <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">Luz</p>
+                <p className="text-xs text-yellow-700 dark:text-yellow-300">Sensor de luz</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
-  );
+  )
 }
