@@ -26,7 +26,30 @@ export function SensorChart({ title, description, data, dataKey, color, unit, li
       const ts = reading.timestamp_lectura
       if (raw == null || ts == null) continue
       const v = parseFloat(raw)
-      const t = new Date(ts).getTime()
+      // normalize timestamp to milliseconds since epoch
+      const parseTimestampToMs = (input: any) => {
+        if (input == null) return NaN
+        // Date object
+        if (input instanceof Date) return input.getTime()
+        // numeric (ms or seconds)
+        if (typeof input === 'number') {
+          // if clearly seconds (e.g. 10-digit), convert to ms
+          return input < 1e11 ? input * 1000 : input
+        }
+        // string: try ISO parse first
+        if (typeof input === 'string') {
+          // numeric string?
+          if (/^\d+$/.test(input)) {
+            const n = parseInt(input, 10)
+            return n < 1e11 ? n * 1000 : n
+          }
+          const d = new Date(input)
+          return isNaN(d.getTime()) ? NaN : d.getTime()
+        }
+        return NaN
+      }
+
+      const t = parseTimestampToMs(ts)
       if (isNaN(v) || isNaN(t)) continue
       labels.push(t)
       values.push(v)
