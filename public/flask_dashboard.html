@@ -1,0 +1,130 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>ESP32 Sensores - Dashboard simple (Flask)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      body{font-family:system-ui, sans-serif; padding:20px}
+      table{border-collapse:collapse;width:100%}
+      th,td{border:1px solid #ddd;padding:8px}
+      th{background:#f4f4f4}
+      tr:hover{background:#fafafa;cursor:pointer}
+      .badge{display:inline-block;padding:4px 8px;border-radius:8px;background:#eee}
+      .badge.alert{background:#ffc9c9;color:#800}
+    </style>
+  </head>
+  <body>
+    <h1>ESP32 Sensores — Dashboard</h1>
+    <p>Tabla de dispositivos (última lectura). Clic en una fila para ver histórico y gráficas.</p>
+
+    <div id="table-wrap">Cargando...</div>
+
+    <h2 id="sel-title" style="margin-top:24px">Selecciona un dispositivo</h2>
+    <div style="display:flex;gap:20px;align-items:flex-start">
+      <div style="flex:1">
+        <canvas id="chartTemp" height="200"></canvas>
+      </div>
+      <div style="flex:1">
+        <canvas id="chartHum" height="200"></canvas>
+      </div>
+      <div style="flex:1">
+        <canvas id="chartCons" height="200"></canvas>
+      </div>
+    </div>
+
+    <script>
+      const apiBase = 'http://localhost:5000'
+
+      async function fetchSensores(){
+        const res = await fetch(`${apiBase}/sensores`)
+        return res.json()
+      }
+
+      function renderTable(devices){
+        if(!devices || devices.length===0){
+          document.getElementById('table-wrap').innerText = 'No hay dispositivos.'
+          return
+        }
+
+        const table = document.createElement('table')
+        const thead = document.createElement('thead')
+        thead.innerHTML = '<tr><th>Device</th><th>Temp (°C)</th><th>Humedad (%)</th><th>Luz (%)</th><th>Última</th><th>Alert</th></tr>'
+        table.appendChild(thead)
+        const tbody = document.createElement('tbody')
+
+        devices.forEach(d => {
+          const tr = document.createElement('tr')
+          tr.innerHTML = `<td>${d.device_id}</td>
+                          <td>${d.temperatura ?? '--'}</td>
+                          <td>${d.humedad ?? '--'}</td>
+                          <td>${d.luz_porcentaje ?? '--'}</td>
+                          <td>${d.timestamp_lectura ?? '--'}</td>
+                          <td></td>`
+          const alertCell = tr.children[5]
+          const t = parseFloat(d.temperatura)
+          const h = parseFloat(d.humedad)
+          const alerts = []
+          if(!isNaN(t) && t>40) alerts.push('Temp alta')
+          if(!isNaN(h) && h>85) alerts.push('Humedad alta')
+          if(alerts.length) alertCell.innerHTML = `<span class="badge alert">${alerts.join(', ')}</span>`
+          else alertCell.innerHTML = `<span class="badge">OK</span>`
+
+          tr.addEventListener('click', ()=> selectDevice(d.device_id))
+          tbody.appendChild(tr)
+        })
+
+        table.appendChild(tbody)
+        const wrap = document.getElementById('table-wrap')
+        wrap.innerHTML = ''
+        wrap.appendChild(table)
+      }
+
+      let chartTemp=null, chartHum=null, chartCons=null
+
+      function ensureCharts(){
+        if(chartTemp) return
+        const ctxT = document.getElementById('chartTemp').getContext('2d')
+        const ctxH = document.getElementById('chartHum').getContext('2d')
+        const ctxC = document.getElementById('chartCons').getContext('2d')
+        chartTemp = new Chart(ctxT, {type:'line', data:{labels:[], datasets:[{label:'Temperatura (°C)', data:[], borderColor:'rgb(255,99,132)', tension:0.2}]}, options:{responsive:true}})
+        chartHum = new Chart(ctxH, {type:'line', data:{labels:[], datasets:[{label:'Humedad (%)', data:[], borderColor:'rgb(54,162,235)', tension:0.2}]}, options:{responsive:true}})
+        chartCons = new Chart(ctxC, {type:'line', data:{labels:[], datasets:[{label:'Consumo (W)', data:[], borderColor:'rgb(255,205,86)', tension:0.2}]}, options:{responsive:true}})
+      }
+
+      async function selectDevice(deviceId){
+        document.getElementById('sel-title').innerText = `Dispositivo: ${deviceId}`
+        ensureCharts()
+        const res = await fetch(`${apiBase}/historico/${deviceId}?limit=200`)
+        const json = await res.json()
+        const rows = json.readings || []
+        const labels = rows.map(r=> new Date(r.timestamp_lectura).toLocaleString())
+        const temp = rows.map(r => r.temperatura ? parseFloat(r.temperatura) : null)
+        const hum = rows.map(r => r.humedad ? parseFloat(r.humedad) : null)
+        const cons = rows.map(r => r.consumo_w ? parseFloat(r.consumo_w) : null)
+
+        chartTemp.data.labels = labels
+        chartTemp.data.datasets[0].data = temp
+        chartTemp.update()
+
+        chartHum.data.labels = labels
+        chartHum.data.datasets[0].data = hum
+        chartHum.update()
+
+        chartCons.data.labels = labels
+        chartCons.data.datasets[0].data = cons
+        chartCons.update()
+      }
+
+      // Init
+      (async ()=>{
+        try{
+          const json = await fetchSensores()
+          renderTable(json.devices || [])
+        }catch(e){
+          document.getElementById('table-wrap').innerText = 'Error cargando dispositivos: '+e
+        }
+      })()
+    </script>
+  </body>
+</html>

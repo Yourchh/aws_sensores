@@ -1,4 +1,5 @@
 from flask import Flask, jsonify
+from flask import render_template_string, request
 from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -141,6 +142,152 @@ def get_stats(device_id):
     except Exception as e:
         print(f"[v0] Error fetching stats: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/sensores', methods=['GET'])
+def sensores_latest():
+        """Return the most recent reading for each device (JSON)
+        Matches requirement: /sensores shows datos más recientes de cada ESP32
+        """
+        conn = get_db_connection()
+        if not conn:
+                return jsonify({'error': 'Database connection failed'}), 500
+
+        try:
+                cur = conn.cursor()
+                # Use DISTINCT ON to get latest per device (Postgres)
+                cur.execute("""
+                        SELECT DISTINCT ON (device_id) device_id, temperatura, humedad, distancia_cm,
+                                     luz_porcentaje, estado_luz, timestamp_lectura
+                        FROM lecturas
+                        ORDER BY device_id, timestamp_lectura DESC
+                """)
+                rows = cur.fetchall()
+                cur.close()
+                conn.close()
+
+                for r in rows:
+                        if isinstance(r.get('timestamp_lectura'), datetime):
+                                r['timestamp_lectura'] = r['timestamp_lectura'].isoformat()
+
+                return jsonify({'devices': rows})
+        except Exception as e:
+                print(f"[v0] Error fetching sensores latest: {e}")
+                return jsonify({'error': str(e)}), 500
+
+
+@app.route('/historico/<device_id>', methods=['GET'])
+def historico(device_id):
+        """Return historical records for device_id (JSON). Query param `limit` optional."""
+        limit = 200
+        try:
+                limit = int(request.args.get('limit', limit))
+        except Exception:
+                pass
+
+        conn = get_db_connection()
+        if not conn:
+                return jsonify({'error': 'Database connection failed'}), 500
+
+        try:
+                cur = conn.cursor()
+                cur.execute("""
+                        SELECT device_id, temperatura, humedad, distancia_cm, luz_porcentaje, estado_luz, consumo_w, timestamp_lectura
+                        FROM lecturas
+                        WHERE device_id = %s
+                        ORDER BY timestamp_lectura DESC
+                        LIMIT %s
+                """, (device_id, limit))
+                readings = cur.fetchall()
+                cur.close()
+                conn.close()
+
+                for reading in readings:
+                        if isinstance(reading.get('timestamp_lectura'), datetime):
+                                reading['timestamp_lectura'] = reading['timestamp_lectura'].isoformat()
+
+                return jsonify({'readings': readings})
+        except Exception as e:
+                print(f"[v0] Error fetching historico: {e}")
+                return jsonify({'error': str(e)}), 500
+
+
+@app.route('/grafica/<device_id>', methods=['GET'])
+def grafica(device_id):
+        """Generate an HTML page with Chart.js plots for temperatura, humedad and consumo.
+        This returns a simple page that embeds Chart.js (CDN) and renders the last N readings.
+        """
+        limit = int(request.args.get('limit', 100))
+        conn = get_db_connection()
+        if not conn:
+                return "Database connection failed", 500
+
+        try:
+                cur = conn.cursor()
+                cur.execute("""
+                        SELECT timestamp_lectura, temperatura, humedad, consumo_w
+                        FROM lecturas
+                        WHERE device_id = %s
+                        ORDER BY timestamp_lectura DESC
+                        LIMIT %s
+                """, (device_id, limit))
+                rows = cur.fetchall()
+                cur.close()
+                conn.close()
+
+                # Prepare arrays (oldest first)
+                rows = list(reversed(rows))
+                labels = [r['timestamp_lectura'].isoformat() if isinstance(r.get('timestamp_lectura'), datetime) else r.get('timestamp_lectura') for r in rows]
+                temperatura = [float(r['temperatura']) if r.get('temperatura') is not None else None for r in rows]
+                humedad = [float(r['humedad']) if r.get('humedad') is not None else None for r in rows]
+                consumo = [float(r['consumo_w']) if r.get('consumo_w') is not None else None for r in rows]
+
+                html = render_template_string("""
+                <!doctype html>
+                <html>
+                    <head>
+                        <meta charset="utf-8" />
+                        <title>Grafica {{device_id}}</title>
+                        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+                        <style>body { font-family: system-ui, sans-serif; padding: 20px; }</style>
+                    </head>
+                    <body>
+                        <h2>Dispositivo: {{device_id}}</h2>
+                        <canvas id="chart" width="900" height="300"></canvas>
+                        <script>
+                            const labels = {{ labels|tojson }};
+                            const temp = {{ temperatura|tojson }};
+                            const hum = {{ humedad|tojson }};
+                            const cons = {{ consumo|tojson }};
+
+                            const ctx = document.getElementById('chart').getContext('2d');
+                            const chart = new Chart(ctx, {
+                                type: 'line',
+                                data: {
+                                    labels: labels,
+                                    datasets: [
+                                        { label: 'Temperatura (°C)', data: temp, borderColor: 'rgb(255,99,132)', tension: 0.2 },
+                                        { label: 'Humedad (%)', data: hum, borderColor: 'rgb(54,162,235)', tension: 0.2 },
+                                        { label: 'Consumo (W)', data: cons, borderColor: 'rgb(255,205,86)', tension: 0.2, yAxisID: 'y1' },
+                                    ]
+                                },
+                                options: {
+                                    interaction: { mode: 'index', intersect: false },
+                                    scales: {
+                                        y: { type: 'linear', position: 'left' },
+                                        y1: { type: 'linear', position: 'right', grid: { drawOnChartArea: false } }
+                                    }
+                                }
+                            });
+                        </script>
+                    </body>
+                </html>
+                """, device_id=device_id, labels=labels, temperatura=temperatura, humedad=humedad, consumo=consumo)
+
+                return html
+        except Exception as e:
+                print(f"[v0] Error building grafica: {e}")
+                return f"Error: {e}", 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { SensorChart } from "@/components/sensor-chart"
 import { MetricCard } from "@/components/metric-card"
 import { Thermometer, Droplets, Ruler, Lightbulb, TrendingUp, TrendingDown, Minus } from "lucide-react"
+import Link from "next/link"
 
 interface SensorReading {
   device_id: string
@@ -106,6 +107,23 @@ export function DeviceDashboard({ deviceId }: DeviceDashboardProps) {
   const humedadActual = parseFloat(latestReading.humedad)
   const distanciaActual = parseFloat(latestReading.distancia_cm)
 
+  // derive luz_porcentaje when missing using estado_luz
+  const deriveLuz = (r: any) => {
+    if (r.luz_porcentaje != null && String(r.luz_porcentaje).trim() !== "") return String(r.luz_porcentaje)
+    if (r.estado_luz != null) {
+      const s = String(r.estado_luz).trim().toLowerCase()
+      const onValues = ['on', '1', 'true', 'encendida', 'encendido', 'si', 'sí', 'high', 'alto', 'luz']
+      const offValues = ['off', '0', 'false', 'apagada', 'apagado', 'no', 'low', 'bajo', 'oscuridad', 'oscuro']
+      if (onValues.includes(s)) return '100'
+      if (offValues.includes(s)) return '0'
+      const m = s.match(/(\d+)(?:\.|,)?(\d+)?/)
+      if (m) return m[0]
+    }
+    return undefined
+  }
+  const luzActualStr = deriveLuz(latestReading) ?? latestReading.luz_porcentaje
+  const luzActualNum = luzActualStr != null ? parseFloat(String(luzActualStr)) : NaN
+
   const tempTrend = getTrend(tempActual, stats.avg_temp)
   const humidityTrend = getTrend(humedadActual, stats.avg_humidity)
   const distanceTrend = getTrend(distanciaActual, stats.avg_distance)
@@ -144,15 +162,21 @@ export function DeviceDashboard({ deviceId }: DeviceDashboardProps) {
         />
         <MetricCard
           title="Estado de Luz"
-          value={latestReading.estado_luz || "Apagada"}
+          value={latestReading.estado_luz || (isNaN(luzActualNum) ? "Apagada" : (luzActualNum > 0 ? "Luz" : "Oscuridad"))}
           icon={Lightbulb}
-          subtitle={`${latestReading.luz_porcentaje}%`}
+          subtitle={!isNaN(luzActualNum) ? `${luzActualNum}%` : "--"}
           color="yellow"
         />
       </div>
 
+      {/* Quick links to full grafica pages for common devices */}
+      <div className="flex gap-3">
+        <Link href="/grafica/esp32_2J" className="inline-block rounded bg-sky-600 text-white px-3 py-1 text-sm">Ver gráfica esp32_2J</Link>
+        <Link href="/grafica/esp32_sensores_reales" className="inline-block rounded bg-sky-600 text-white px-3 py-1 text-sm">Ver gráfica esp32_sensores_reales</Link>
+      </div>
+
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <SensorChart
           title="Temperatura"
           description="Historial de temperatura en °C"
@@ -168,6 +192,18 @@ export function DeviceDashboard({ deviceId }: DeviceDashboardProps) {
           dataKey="humedad"
           color="hsl(var(--chart-2))"
           unit="%"
+        />
+        <SensorChart
+          title="Luminosidad"
+          description="Historial de luz (%) — usa luz_porcentaje o estado_luz"
+          data={history.map((r) => ({
+            ...r,
+            luz_porcentaje: r.luz_porcentaje != null && String(r.luz_porcentaje).trim() !== '' ? String(r.luz_porcentaje) : (r.estado_luz ? deriveLuz(r) : undefined),
+          }))}
+          dataKey="luz_porcentaje"
+          color="hsl(var(--chart-4))"
+          unit="%"
+          limits={{ min: 0, max: 100 }}
         />
       </div>
 
